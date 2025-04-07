@@ -1,0 +1,45 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Установка необходимых зависимостей
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    git \
+    libsndfile1-dev \
+    libasound2-dev \
+    build-essential \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Установка базовых Python пакетов
+RUN pip install --no-cache-dir numpy==1.24.3 numba
+
+# Установка PyTorch
+RUN pip install --no-cache-dir torch==2.1.0 torchaudio==2.1.0
+
+# Установка Transformers
+RUN pip install --no-cache-dir transformers==4.35.2
+
+# Установка FastAPI и зависимостей
+RUN pip install --no-cache-dir fastapi uvicorn python-multipart pydantic-settings
+
+# Установка Librosa и зависимостей
+RUN pip install --no-cache-dir librosa==0.10.1
+
+# Создаем директорию для кэша моделей
+RUN mkdir -p /root/.cache/huggingface
+
+# Копируем файлы приложения
+COPY whisper_api.py /app/
+COPY app/core/config.py /app/app/core/
+
+# Предварительная загрузка модели
+RUN python -c "from transformers import WhisperProcessor, WhisperForConditionalGeneration; \
+    model_id='antony66/whisper-large-v3-russian'; \
+    processor = WhisperProcessor.from_pretrained(model_id, local_files_only=False); \
+    model = WhisperForConditionalGeneration.from_pretrained(model_id, local_files_only=False)"
+
+# Запуск API
+CMD ["uvicorn", "whisper_api:app", "--host", "0.0.0.0", "--port", "8001"] 

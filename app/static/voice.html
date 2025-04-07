@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Голосовой ввод</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        #startRecord {
+            background-color: #4CAF50;
+            color: white;
+        }
+        #startRecord:hover {
+            background-color: #45a049;
+        }
+        #stopRecord {
+            background-color: #f44336;
+            color: white;
+        }
+        #stopRecord:hover {
+            background-color: #da190b;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            font-style: italic;
+            color: #666;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+            background-color: #fff;
+            white-space: pre-wrap;
+        }
+        .recording-indicator {
+            display: none;
+            color: #f44336;
+            margin: 10px 0;
+        }
+        .recording-indicator.active {
+            display: block;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Голосовой ввод</h1>
+            <p>Нажмите кнопку и начните говорить. Речь будет автоматически преобразована в текст.</p>
+        </div>
+        
+        <div class="controls">
+            <button id="startRecord">🎤 Начать запись</button>
+            <button id="stopRecord" disabled>⏹ Остановить запись</button>
+        </div>
+        
+        <div class="recording-indicator" id="recordingIndicator">
+            ⚫ Идет запись...
+        </div>
+        
+        <div class="status" id="status"></div>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        const startButton = document.getElementById('startRecord');
+        const stopButton = document.getElementById('stopRecord');
+        const resultDiv = document.getElementById('result');
+        const statusDiv = document.getElementById('status');
+        const recordingIndicator = document.getElementById('recordingIndicator');
+
+        startButton.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    statusDiv.textContent = 'Обработка аудио...';
+                    recordingIndicator.classList.remove('active');
+                    
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const formData = new FormData();
+                    formData.append('file', audioBlob, 'recording.wav');
+
+                    try {
+                        const response = await fetch('/api/voice/transcribe', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        
+                        const data = await response.json();
+                        resultDiv.textContent = data.text;
+                        statusDiv.textContent = 'Транскрипция завершена';
+                        
+                        // Отправляем текст в родительское окно
+                        window.parent.postMessage({
+                            type: 'voiceInput',
+                            text: data.text
+                        }, '*');
+                        
+                    } catch (error) {
+                        console.error('Ошибка при отправке аудио:', error);
+                        resultDiv.textContent = 'Ошибка при обработке аудио';
+                        statusDiv.textContent = 'Произошла ошибка при обработке аудио';
+                    }
+                };
+
+                mediaRecorder.start();
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                recordingIndicator.classList.add('active');
+                statusDiv.textContent = 'Запись начата...';
+                
+            } catch (error) {
+                console.error('Ошибка при доступе к микрофону:', error);
+                statusDiv.textContent = 'Ошибка при доступе к микрофону';
+                alert('Пожалуйста, разрешите доступ к микрофону для использования голосового ввода');
+            }
+        });
+
+        stopButton.addEventListener('click', () => {
+            mediaRecorder.stop();
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            audioChunks = [];
+        });
+    </script>
+</body>
+</html> 

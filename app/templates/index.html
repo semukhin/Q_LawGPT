@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>Q_LawGPT - Юридический ассистент</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Добавляем Markdown.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
+    <!-- Добавляем highlight.js для подсветки кода -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.4.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.4.0/highlight.min.js"></script>
+    <!-- Font Awesome для иконок -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        .chat-container {
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            padding: 10px;
+            margin: 10px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .assistant-message {
+            background-color: #f5f5f5;
+            padding: 10px;
+            margin: 10px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .message-text {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.5;
+        }
+        /* Стили для Markdown */
+        .markdown-content {
+            line-height: 1.6;
+        }
+        .markdown-content h1 { font-size: 1.8em; font-weight: bold; margin: 1em 0; }
+        .markdown-content h2 { font-size: 1.5em; font-weight: bold; margin: 0.8em 0; }
+        .markdown-content h3 { font-size: 1.3em; font-weight: bold; margin: 0.6em 0; }
+        .markdown-content p { margin: 1em 0; }
+        .markdown-content ul { list-style-type: disc; margin: 1em 0; padding-left: 2em; }
+        .markdown-content ol { list-style-type: decimal; margin: 1em 0; padding-left: 2em; }
+        .markdown-content code {
+            background-color: #f0f0f0;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .markdown-content pre {
+            background-color: #f8f8f8;
+            padding: 1em;
+            border-radius: 5px;
+            overflow-x: auto;
+            position: relative;
+        }
+        .markdown-content blockquote {
+            border-left: 4px solid #ddd;
+            padding-left: 1em;
+            margin: 1em 0;
+            color: #666;
+        }
+        .markdown-content a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        .markdown-content a:hover {
+            text-decoration: underline;
+        }
+        .code-block-container {
+            position: relative;
+        }
+        .copy-code-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            padding: 5px 10px;
+            background-color: #f0f0f0;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            opacity: 0.7;
+        }
+        .copy-code-button:hover {
+            opacity: 1;
+        }
+        .auth-form {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            width: 90%;
+            max-width: 400px;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+    </style>
+    <script>
+        // Глобальные настройки
+        window.APP_CONFIG = {
+            csrfToken: "{{ csrf_token }}"
+        };
+    </script>
+</head>
+<body class="bg-gray-100">
+    <!-- Оверлей для модальных окон -->
+    <div id="overlay" class="overlay"></div>
+
+    <!-- Форма регистрации -->
+    <div id="registerForm" class="auth-form">
+        <h2 class="text-2xl font-bold mb-4">Регистрация</h2>
+        <form id="registerFormContent">
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="register-email">
+                    Email
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                       id="register-email" type="email" required>
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="register-first-name">
+                    Имя
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                       id="register-first-name" type="text" required>
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="register-last-name">
+                    Фамилия
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                       id="register-last-name" type="text" required>
+            </div>
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="register-password">
+                    Пароль
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline" 
+                       id="register-password" type="password" required>
+            </div>
+            <div class="flex items-center justify-between">
+                <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
+                        type="submit">
+                    Зарегистрироваться
+                </button>
+                <button class="text-blue-500 hover:text-blue-800" type="button" onclick="showLoginForm()">
+                    Уже есть аккаунт?
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Форма входа -->
+    <div id="loginForm" class="auth-form">
+        <h2 class="text-2xl font-bold mb-4">Вход</h2>
+        <form id="loginFormContent">
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="login-email">
+                    Email
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                       id="login-email" type="email" required>
+            </div>
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="login-password">
+                    Пароль
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline" 
+                       id="login-password" type="password" required>
+            </div>
+            <div class="flex items-center justify-between">
+                <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
+                        type="submit">
+                    Войти
+                </button>
+                <button class="text-blue-500 hover:text-blue-800" type="button" onclick="showRegisterForm()">
+                    Создать аккаунт
+                </button>
+            </div>
+            <div class="text-center mt-4">
+                <button class="text-blue-500 hover:text-blue-800" type="button" onclick="showForgotPasswordForm()">
+                    Забыли пароль?
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Форма восстановления пароля -->
+    <div id="forgotPasswordForm" class="auth-form">
+        <h2 class="text-2xl font-bold mb-4">Восстановление пароля</h2>
+        <form id="forgotPasswordFormContent">
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="forgot-email">
+                    Email
+                </label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
+                       id="forgot-email" type="email" required>
+            </div>
+            <div class="flex items-center justify-between">
+                <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
+                        type="submit">
+                    Отправить код
+                </button>
+                <button class="text-blue-500 hover:text-blue-800" type="button" onclick="showLoginForm()">
+                    Вернуться к входу
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Основной контент -->
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold">Q_LawGPT</h1>
+            <div id="userControls" class="hidden">
+                <span id="userEmail" class="mr-4"></span>
+                <button onclick="logout()" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                    Выйти
+                </button>
+            </div>
+            <div id="authButtons">
+                <button onclick="showLoginForm()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-2">
+                    Войти
+                </button>
+                <button onclick="showRegisterForm()" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                    Регистрация
+                </button>
+            </div>
+        </div>
+        
+        <div id="chatInterface" class="hidden">
+            <div id="messageContainer" class="chat-container mb-4 bg-white rounded-lg shadow-lg p-6">
+                <div class="assistant-message">
+                    <div class="message-text markdown-content">
+                        Здравствуйте! Я ваш юридический ассистент. Как я могу вам помочь?
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <div class="flex items-center w-full">
+                    <textarea id="messageInput" class="flex-grow p-2 border rounded-l focus:outline-none focus:border-blue-500" placeholder="Введите сообщение..."></textarea>
+                    <label for="fileInput" class="cursor-pointer p-2 bg-gray-100 hover:bg-gray-200 border-y">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                        <input type="file" id="fileInput" class="hidden" accept=".doc,.docx,.pdf">
+                    </label>
+                    <button id="sendButton" class="p-2 bg-blue-500 text-white rounded-r hover:bg-blue-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="selectedFileName" class="text-sm text-gray-600 mt-1 hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/markdown.js"></script>
+    <script src="/static/js/voice-input.js"></script>
+    <script src="/static/js/chat.js"></script>
+    <script src="/static/js/auth.js"></script>
+</body>
+</html> 

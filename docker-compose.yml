@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  q_lawgpt:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - WHISPER_API_URL=http://whisper:8001
+    depends_on:
+      - whisper
+
+  whisper:
+    build:
+      context: .
+      dockerfile: Dockerfile.whisper
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./models:/root/.cache/huggingface  # Persistent storage для моделей
+    environment:
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+      - HF_HOME=/root/.cache/huggingface
+    deploy:
+      resources:
+        limits:
+          memory: 8G  # Ограничение по памяти 
