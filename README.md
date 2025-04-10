@@ -1,6 +1,6 @@
-# Q_LawGPT
+# LawGPT
 
-Q_LawGPT - это юридический ассистент на базе искусственного интеллекта, разработанный для помощи в правовых вопросах с использованием технологий обработки естественного языка.
+LawGPT - это юридический ассистент на базе искусственного интеллекта, разработанный для помощи в правовых вопросах с использованием технологий обработки естественного языка.
 
 ## Возможности
 
@@ -46,9 +46,9 @@ cd Q_LawGPT
 
 2. Создайте виртуальное окружение и установите зависимости:
 ```bash
-python -m venv q_lawgpt
-source q_lawgpt/bin/activate  # для Linux/Mac
-q_lawgpt\Scripts\activate  # для Windows
+python -m venv venv
+source venv/bin/activate  # для Linux/Mac
+venv\Scripts\activate  # для Windows
 pip install -r requirements.txt
 ```
 
@@ -64,10 +64,7 @@ alembic upgrade head
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-6. Запустите сервис Whisper API (в отдельном терминале):
-```bash
-python run_whisper_api.py
-```
+6. Процесс транскрибации Whisper API интегрирован в основное приложение.
 
 ### Запуск через Docker
 
@@ -78,31 +75,61 @@ docker-compose up -d
 ```
 
 Это запустит:
-- Основной сервис Q_LawGPT на порту 8000
-- Whisper API сервис на порту 8001
+- Основной сервис LawGPT на порту 8000
+- БД PostgreSQL
+- Elasticsearch
 
 ## Структура проекта
 
-```
 Q_LawGPT/
-├── app/                    # Основной код приложения
-│   ├── agents/             # Агенты для различных юридических задач
-│   ├── api/                # API эндпоинты (auth, chat, documents, voice)
-│   ├── core/               # Ядро приложения (config, database, security)
-│   ├── db/                 # Модели базы данных
-│   ├── rag/                # Retrieval-Augmented Generation модули
-│   ├── schemas/            # Pydantic схемы
-│   ├── services/           # Сервисы (chat, document, voice, websocket)
-│   ├── utils/              # Утилиты
-│   └── main.py             # Точка входа FastAPI приложения
-├── alembic/                # Миграции базы данных
-├── models/                 # Предобученные модели 
-├── docker-compose.yml      # Конфигурация Docker Compose
-├── Dockerfile.whisper      # Dockerfile для Whisper API сервиса
-├── requirements.txt        # Зависимости Python
-├── run_whisper_api.py      # Скрипт запуска Whisper API сервиса
-└── whisper_service.py      # Сервис Whisper API
-```
+├── alembic/ # Миграции базы данных
+│ ├── versions/ # Версии миграций
+│ ├── env.py # Окружение для миграций
+│ └── script.py.mako # Шаблон для миграций
+├── app/ # Основной код приложения
+│ ├── agents/ # Агенты для различных юридических задач
+│ │ ├── analytics.py # Аналитический агент
+│ │ ├── coordinator.py # Координатор агентов
+│ │ ├── document_analysis.py # Анализ документов
+│ │ ├── document_prep.py # Подготовка документов
+│ │ ├── judicial.py # Судебный агент
+│ │ └── legal_norms.py # Агент по правовым нормам
+│ ├── api/ # API эндпоинты
+│ │ ├── auth.py # Аутентификация
+│ │ ├── chat.py # Чат API
+│ │ ├── documents.py # API для работы с документами
+│ │ ├── websockets.py # WebSockets API
+│ │ └── whisper_api.py # API для Whisper
+│ ├── core/ # Ядро приложения
+│ │ ├── config.py # Конфигурация
+│ │ ├── database.py # Настройки базы данных
+│ │ └── security.py # Безопасность и аутентификация
+│ ├── db/ # Модели базы данных
+│ ├── rag/ # Retrieval-Augmented Generation модули
+│ │ ├── elastic.py # Интеграция с Elasticsearch
+│ │ ├── retrieval.py # Поиск и извлечение данных
+│ │ └── indexing.py # Индексирование данных
+│ ├── schemas/ # Pydantic схемы
+│ ├── scripts/ # Вспомогательные скрипты
+│ │ └── index_rag_data.py # Индексирование данных для RAG
+│ ├── services/ # Сервисы
+│ │ ├── ai_service.py # Сервис AI
+│ │ ├── chat.py # Сервис чата
+│ │ ├── document.py # Сервис для работы с документами
+│ │ ├── elasticsearch_service.py # Сервис для ElasticSearch
+│ │ ├── image_analysis.py # Анализ изображений
+│ │ ├── voice.py # Сервис для голосового ввода
+│ │ └── web_search.py # Сервис для поиска в интернете
+│ ├── utils/ # Утилиты
+│ ├── init.py # Инициализация пакета
+│ └── main.py # Точка входа FastAPI приложения
+├── static/ # Статические файлы
+├── .gitignore # Список исключений для git
+├── alembic.ini # Конфигурация Alembic
+├── docker-compose.yml # Конфигурация Docker Compose
+├── Dockerfile.whisper # Dockerfile для Whisper API сервиса
+└── requirements.txt # Зависимости Python
+
 
 ## Разработка
 
