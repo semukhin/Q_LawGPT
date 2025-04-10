@@ -38,36 +38,155 @@ class ElasticsearchService:
         self.court_decisions_index = "court_decisions"
         self.legal_analytics_index = "legal_analytics"
     
+    # app/services/elasticsearch_service.py - обновление методов
     async def search_law_chunks(
         self,
         query: str,
         top_n: int = 7
     ) -> List[Dict[str, Any]]:
-        response = await self.es.search(
-            index=self.law_index,
-            body={
+        """
+        Поиск по правовым нормам с объединенным запросом
+        """
+        try:
+            # Создаем комбинированный запрос для лучшего поиска
+            combined_query = {
                 "query": {
-                    "multi_match": {
-                        "query": query,
-                        "fields": ["content^3", "title^2", "metadata.*"],
-                        "type": "best_fields",
-                        "tie_breaker": 0.3
+                    "bool": {
+                        "should": [
+                            # Точное совпадение с запросом
+                            {
+                                "match_phrase": {
+                                    "content": {
+                                        "query": query,
+                                        "boost": 3.0
+                                    }
+                                }
+                            },
+                            # Менее точное совпадение для расширенного поиска
+                            {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": ["content^3", "title^2", "metadata.*"],
+                                    "type": "best_fields",
+                                    "tie_breaker": 0.3,
+                                    "fuzziness": "AUTO"
+                                }
+                            }
+                        ],
+                        "minimum_should_match": 1
                     }
+                },
+                "highlight": {
+                    "fields": {
+                        "content": {"number_of_fragments": 3, "fragment_size": 200},
+                        "title": {}
+                    },
+                    "pre_tags": ["<em>"],
+                    "post_tags": ["</em>"]
                 },
                 "size": top_n
             }
-        )
+            
+            response = await self.es.search(
+                index=self.law_index,
+                body=combined_query
+            )
+            
+            results = []
+            for hit in response["hits"]["hits"]:
+                source = hit["_source"]
+                highlights = hit.get("highlight", {})
+                
+                # Извлекаем выделенные фрагменты или используем исходный контент
+                content_highlight = "".join(highlights.get("content", [source.get("content", "")[:500]]))
+                title_highlight = "".join(highlights.get("title", [source.get("title", "")]))
+                
+                results.append({
+                    "id": hit["_id"],
+                    "score": hit["_score"],
+                    "content": content_highlight,
+                    "title": title_highlight,
+                    "metadata": source.get("metadata", {})
+                })
+            
+            return results
+        except Exception as e:
+            logger.error(f"Ошибка поиска в ElasticSearch: {str(e)}")
+            return []
+
+    async def hybrid_search(
+        self,
+        query: str,
+        indices: List[str] = None,
+        top_n: int = 10
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Комбинированный поиск по нескольким индексам
+        """
+        if indices is None:
+            indices = [self.law_index, self.court_decisions_index, self.legal_analytics_index]
         
-        return [
-            {
-                "id": hit["_id"],
-                "score": hit["_score"],
-                "content": hit["_source"]["content"],
-                "title": hit["_source"]["title"],
-                "metadata": hit["_source"].get("metadata", {})
-            }
-            for hit in response["hits"]["hits"]
-        ]
+        results = {}
+        
+        try:
+            for index in indices:
+                # Используем тот же запрос, что и в search_law_chunks
+                combined_query = {
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {"match_phrase": {"content": {"query": query, "boost": 3.0}}},
+                                {
+                                    "multi_match": {
+                                        "query": query,
+                                        "fields": ["content^3", "title^2", "metadata.*"],
+                                        "type": "best_fields",
+                                        "tie_breaker": 0.3,
+                                        "fuzziness": "AUTO"
+                                    }
+                                }
+                            ],
+                            "minimum_should_match": 1
+                        }
+                    },
+                    "highlight": {
+                        "fields": {
+                            "content": {"number_of_fragments": 3, "fragment_size": 200},
+                            "title": {}
+                        },
+                        "pre_tags": ["<em>"],
+                        "post_tags": ["</em>"]
+                    },
+                    "size": top_n
+                }
+                
+                response = await self.es.search(
+                    index=index,
+                    body=combined_query
+                )
+                
+                index_results = []
+                for hit in response["hits"]["hits"]:
+                    source = hit["_source"]
+                    highlights = hit.get("highlight", {})
+                    
+                    content_highlight = "".join(highlights.get("content", [source.get("content", "")[:500]]))
+                    title_highlight = "".join(highlights.get("title", [source.get("title", "")]))
+                    
+                    index_results.append({
+                        "id": hit["_id"],
+                        "score": hit["_score"],
+                        "content": content_highlight,
+                        "title": title_highlight,
+                        "metadata": source.get("metadata", {})
+                    })
+                
+                results[index] = index_results
+            
+            return results
+        except Exception as e:
+            logger.error(f"Ошибка гибридного поиска: {str(e)}")
+            return {index: [] for index in indices}
 
     async def search_court_decisions(
         self,

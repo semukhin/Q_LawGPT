@@ -1,4 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, BackgroundTasks, status
+from fastapi import WebSocket, WebSocketDisconnect, Depends, BackgroundTasks
+from app.api.websockets import connect_websocket, disconnect_websocket, handle_websocket_chat
+from app.core.security import get_current_user_ws
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -732,6 +735,38 @@ async def upload_document_image(
         "file_size": attachment.file_size,
         "analysis_status": result.get("status", "обработка")
     }
+
+# WebSocket эндпоинты
+@app.websocket("/ws/chat/{client_id}")
+async def websocket_chat_endpoint(
+    websocket: WebSocket, 
+    client_id: str,
+    conversation_id: Optional[str] = None
+):
+    """WebSocket эндпоинт для чата с потоковой передачей"""
+    await connect_websocket(websocket, client_id)
+    
+    try:
+        # Аутентификация через токен
+        user = await get_current_user_ws(websocket)
+        
+        # Обработка сообщений чата
+        await handle_websocket_chat(
+            websocket, 
+            client_id, 
+            user, 
+            uuid.UUID(conversation_id) if conversation_id else None
+        )
+    except Exception as e:
+        logger.error(f"Ошибка в WebSocket: {str(e)}")
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except:
+            pass
+    finally:
+        await disconnect_websocket(client_id)
+
+
 
 @app.get("/api/v1/messages/{message_id}")
 async def get_message_status(

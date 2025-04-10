@@ -1,64 +1,17 @@
-from typing import Dict, Any, List, Optional, Union
-import logging
-import asyncio
-import base64
-import os
-from app.core.config import settings
-from app.services.ai_service import call_qwen_api
-from app.services.elasticsearch_service import elasticsearch_service
-
-logger = logging.getLogger(__name__)
-
-class DocumentAnalysisAgent:
-    """
-    Агент для анализа юридических документов на изображениях
-    
-    Функции:
-    - Анализ документов из изображений
-    - Определение типа документа
-    - Извлечение ключевой юридической информации
-    - Сохранение результатов анализа в Elasticsearch
-    """
-    
-    def __init__(self):
-        """
-        Инициализация агента анализа документов
-        """
-        self.site_url = settings.BASE_URL
-        self.site_name = "LawGPT.ru"
-        self.es_service = elasticsearch_service
-        
-        # Типы документов и их ключевые признаки
-        self.document_types = {
-            "contract": ["договор", "соглашение", "контракт", "сторона", "обязуется"],
-            "lawsuit": ["исковое заявление", "иск", "истец", "ответчик", "суд", "требование"],
-            "court_decision": ["решение суда", "постановление", "определение суда", "приговор"],
-            "appeal": ["апелляционная жалоба", "апелляция", "жалоба", "обжалование"],
-            "power_of_attorney": ["доверенность", "уполномочивает", "доверяет", "поручает"],
-            "statute": ["устав", "положение", "учредительный документ"],
-            "legal_statement": ["заявление", "ходатайство"],
-            "notary_document": ["нотариальный", "нотариус", "удостоверено"],
-            "official_letter": ["официальное письмо", "уведомление", "извещение"]
-        }
-    
     async def analyze_document_image(self, image_url: str) -> Dict[str, Any]:
         """
-        Анализирует изображение юридического документа
-        
-        Аргументы:
-        image_url -- URL изображения или путь к локальному файлу
-        
-        Возвращает:
-        Словарь с результатами анализа документа
+        Анализирует изображение юридического документа и потоково возвращает результаты
         """
         prompt = """
-        Проанализируй этот юридический документ и выдели следующую информацию:
+        Проанализируй детально этот юридический документ и выдели следующую информацию:
+        
         1. Тип документа (договор, судебное решение, заявление и т.д.)
         2. Основные стороны и их реквизиты (ФИО, организации, адреса, реквизиты)
         3. Ключевые положения и обязательства сторон
         4. Даты, сроки и временные рамки действия документа
         5. Юридически значимые детали (условия, размеры платежей, санкции)
         6. Основания возникновения правоотношений
+        7. Применимое законодательство и нормативно-правовые акты
         
         Предоставь структурированный ответ на русском языке с чётким разделением на разделы.
         Если какая-то информация отсутствует или нечитаема, укажи это.
@@ -66,7 +19,6 @@ class DocumentAnalysisAgent:
         
         # Проверяем, является ли image_url локальным файлом
         if os.path.isfile(image_url):
-            # Если это локальный файл, конвертируем его в base64
             try:
                 with open(image_url, "rb") as img_file:
                     base64_image = base64.b64encode(img_file.read()).decode('utf-8')
@@ -83,8 +35,8 @@ class DocumentAnalysisAgent:
         result = await call_qwen_api(
             prompt=prompt,
             image_url=image_url,
-            max_tokens=3000,  # Увеличиваем для более полного анализа
-            temperature=0.3   # Низкая температура для точности
+            max_tokens=4000,
+            temperature=0.3
         )
         
         if result["success"]:
@@ -93,13 +45,26 @@ class DocumentAnalysisAgent:
             # Добавляем типизированные подсказки для дальнейшего анализа
             follow_up_tips = self._generate_follow_up_tips(document_type)
             
+            # Проверяем, содержит ли документ таблицы
+            has_tables = self._check_for_tables(result["text"])
+            
+            # Если это документ со сложной структурой, предлагаем дополнительный анализ
+            complex_document = document_type in ["contract", "court_decision", "statute"]
+            
             analysis_result = {
                 "document_analysis": result["text"],
                 "document_type": document_type,
                 "document_type_readable": self._get_readable_document_type(document_type),
                 "follow_up_tips": follow_up_tips,
+                "has_tables": has_tables,
+                "is_complex": complex_document,
                 "success": True
             }
+            
+            # Извлекаем структурированные данные из анализа
+            structured_data = self._extract_structured_data(result["text"], document_type)
+            if structured_data:
+                analysis_result["structured_data"] = structured_data
             
             # Сохраняем результат анализа в Elasticsearch
             try:
@@ -116,6 +81,96 @@ class DocumentAnalysisAgent:
                 "success": False
             }
     
+
+    def _extract_structured_data(self, analysis_text: str, document_type: str) -> Optional[Dict[str, Any]]:
+        """
+        Извлекает структурированные данные из текста анализа в зависимости от типа документа
+        """
+        structured_data = {}
+        
+        # Извлекаем даты из текста
+        dates = re.findall(r'(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})', analysis_text)
+        if dates:
+            structured_data["dates"] = dates
+        
+        # Извлекаем суммы денег
+        money_amounts = re.findall(r'(\d+(?:[\s,\.]\d+)*(?:\s?(?:руб(?:лей)?|₽|RUB|USD|\$|EUR|€)))', analysis_text)
+        if money_amounts:
+            structured_data["money_amounts"] = money_amounts
+        
+        # Извлекаем ФИО
+        names = re.findall(r'([А-Я][а-я]+\s+[А-Я][а-я]+(?:\s+[А-Я][а-я]+)?)', analysis_text)
+        if names:
+            structured_data["names"] = names
+        
+        # Извлекаем данные в зависимости от типа документа
+        if document_type == "contract":
+            # Извлекаем стороны договора
+            parties = []
+            party_sections = re.findall(r'Сторона\s+\d+[:\s]+(.*?)(?=Сторона\s+\d+|$)', analysis_text, re.DOTALL)
+            for party in party_sections:
+                parties.append(party.strip())
+            
+            if parties:
+                structured_data["parties"] = parties
+                
+            # Попытка найти предмет договора
+            subject_match = re.search(r'Предмет(?:\s+договора)?[:\s]+(.*?)(?=\n\n|\n[А-Я]|$)', analysis_text, re.DOTALL)
+            if subject_match:
+                structured_data["subject"] = subject_match.group(1).strip()
+                
+        elif document_type == "court_decision":
+            # Извлекаем информацию о суде
+            court_match = re.search(r'(?:суд|СУД)[:\s]+(.*?)(?=\n\n|\n[А-Я]|$)', analysis_text, re.DOTALL)
+            if court_match:
+                structured_data["court"] = court_match.group(1).strip()
+                
+            # Номер дела
+            case_number_match = re.search(r'(?:дело|номер дела|№)[:\s]+([A-Яа-я0-9№\-/]+)', analysis_text)
+            if case_number_match:
+                structured_data["case_number"] = case_number_match.group(1).strip()
+                
+            # Истец и ответчик
+            plaintiff_match = re.search(r'(?:истец|ИСТЕЦ)[:\s]+(.*?)(?=\n\n|\n[А-Я]|ответчик|ОТВЕТЧИК|$)', analysis_text, re.DOTALL)
+            if plaintiff_match:
+                structured_data["plaintiff"] = plaintiff_match.group(1).strip()
+                
+            defendant_match = re.search(r'(?:ответчик|ОТВЕТЧИК)[:\s]+(.*?)(?=\n\n|\n[А-Я]|$)', analysis_text, re.DOTALL)
+            if defendant_match:
+                structured_data["defendant"] = defendant_match.group(1).strip()
+                
+        elif document_type == "legal_statement":
+            # Кому адресовано
+            addressee_match = re.search(r'(?:кому|в|директору|руководителю)[:\s]+(.*?)(?=\n\n|\nот\s|$)', analysis_text, re.DOTALL)
+            if addressee_match:
+                structured_data["addressee"] = addressee_match.group(1).strip()
+                
+            # От кого
+            from_match = re.search(r'(?:от|заявитель)[:\s]+(.*?)(?=\n\n|\n[А-Я]|$)', analysis_text, re.DOTALL)
+            if from_match:
+                structured_data["from"] = from_match.group(1).strip()
+        
+        return structured_data if structured_data else None
+
+    def _check_for_tables(self, text: str) -> bool:
+        """
+        Проверяет наличие таблиц в тексте
+        """
+        # Простая эвристика для определения таблиц - много пробелов или символов табуляции в строке
+        lines = text.split('\n')
+        for line in lines:
+            if line.count('  ') > 3 or line.count('\t') > 1:
+                return True
+                
+        # Также ищем маркеры, которые часто используются в описании таблиц
+        table_markers = ['таблица', 'табл.', 'столбец', 'строка', 'графа', 'ячейка']
+        for marker in table_markers:
+            if marker in text.lower():
+                return True
+        
+        return False
+
+
     async def _save_analysis_to_elasticsearch(self, analysis_result: Dict[str, Any]) -> None:
         """
         Сохраняет результат анализа документа в Elasticsearch

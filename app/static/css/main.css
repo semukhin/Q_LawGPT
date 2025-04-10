@@ -1,0 +1,552 @@
+```css
+/* Global Styles */
+:root {
+    --primary-color: #1e3a8a;
+    --primary-dark: #152a62;
+    --primary-light: #2a4fb7;
+    --secondary-color: #6c757d;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --info-color: #17a2b8;
+    --light-color: #f8f9fa;
+    --dark-color: #343a40;
+    --gray-100: #f8f9fa;
+    --gray-200: #e9ecef;
+    --gray-300: #dee2e6;
+    --gray-400: #ced4da;
+    --gray-500: #adb5bd;
+    --gray-600: #6c757d;
+    --gray-700: #495057;
+    --gray-800: #343a40;
+    --gray-900: #212529;
+    --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family);
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--gray-900);
+    background-color: var(--gray-100);
+}
+
+a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+button {
+    cursor: pointer;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-family: var(--font-family);
+    font-size: 14px;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+button:hover {
+    transform: translateY(-1px);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* App Layout */
+#app {
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+/* Authentication Styles */
+#auth-container {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--gray-100);
+}
+
+.auth-box {
+    width: 400px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 32px;
+    text-align: center;
+}
+
+.logo-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.logo {
+    width: 64px;
+    height: 64px;
+}
+
+.logo-large {
+    width: 128px;
+    height: 128px;
+    margin-bottom: 24px;
+}
+
+.auth-box h1 {
+    font-size: 28px;
+    margin-bottom: 8px;
+    color: var(--primary-color);
+}
+
+.auth-box h2 {
+    font-size: 16px;
+    font-weight: normal;
+    color: var(--gray-600);
+    margin-bottom: 24px;
+}
+
+.tabs {
+    display: flex;
+    margin-bottom: 24px;
+}
+
+.tab {
+    flex: 1;
+    padding: 8px;
+    text-align: center;
+    border-bottom: 2px solid var(--gray-300);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tab.active {
+    border-bottom-color: var(--primary-color);
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.form-group {
+    margin-bottom: 16px;
+    text-align: left;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 14px;
+    color: var(--gray-700);
+}
+
+.form-group input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+.auth-button {
+    width: 100%;
+    padding: 12px;
+    background-color: var(--primary-color);
+    color: white;
+    font-size: 16px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.auth-button:hover {
+    background-color: var(--primary-dark);
+}
+
+.error-message {
+    color: var(--danger-color);
+    margin-top: 16px;
+    font-size: 14px;
+}
+
+/* Main Application Layout */
+#app-container {
+    display: flex;
+    height: 100vh;
+}
+
+.sidebar {
+    width: 280px;
+    background-color: var(--gray-800);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.3s;
+}
+
+.sidebar.collapsed {
+    width: 68px;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px
+
+
+/* app/static/css/main.css - дополнение к имеющимся стилям */
+
+/* Стили для "размышлений" агентов */
+.message-thinking {
+    font-size: 0.85em;
+    color: #666;
+    background-color: #f5f5f5;
+    padding: 10px;
+    margin-top: 8px;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    line-height: 1.4;
+    max-height: 200px;
+    overflow-y: auto;
+    border-left: 3px solid #aaa;
+}
+
+.message-thinking::-webkit-scrollbar {
+    width: 5px;
+}
+
+.message-thinking::-webkit-scrollbar-thumb {
+    background-color: #ccc;
+    border-radius: 5px;
+}
+
+/* Индикаторы шагов в "размышлениях" */
+.thinking-step {
+    margin-bottom: 5px;
+    font-family: monospace;
+}
+
+.thinking-step.success {
+    color: #28a745;
+}
+
+.thinking-step.error {
+    color: #dc3545;
+}
+
+.thinking-step.warning {
+    color: #ffc107;
+}
+
+/* Голосовой ввод */
+.voice-input-button {
+    background-color: #f0f0f0;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.voice-input-button:hover {
+    background-color: #e0e0e0;
+}
+
+.voice-input-button.recording {
+    background-color: #ff4444;
+    color: white;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7); }
+    70% { opacity: 0.7; box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
+    100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
+}
+
+/* Улучшенное отображение дат и времени */
+.message-timestamp {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+}
+
+.message-timestamp i {
+    margin-right: 5px;
+}
+
+/* Стили в стиле DeepSeek */
+:root {
+    --deepseek-primary: #2D31FA;
+    --deepseek-secondary: #5D54A4;
+    --deepseek-bg-dark: #1E1E2E;
+    --deepseek-bg-light: #F8F9FA;
+    --deepseek-text-light: #E0E0E0;
+    --deepseek-text-dark: #212529;
+}
+
+/* Опционально: тёмная тема в стиле DeepSeek */
+.deepseek-dark {
+    background-color: var(--deepseek-bg-dark);
+    color: var(--deepseek-text-light);
+}
+
+.deepseek-dark .sidebar {
+    background-color: #151521;
+}
+
+.deepseek-dark .new-chat-button {
+    background-color: var(--deepseek-primary);
+    color: white;
+}
+
+.deepseek-dark .message-input {
+    background-color: #2D2D3E;
+    color: var(--deepseek-text-light);
+    border-color: #444;
+}
+
+.deepseek-dark .message-container {
+    background-color: var(--deepseek-bg-dark);
+}
+
+.deepseek-dark .user-message {
+    background-color: #2D2D3E;
+    color: var(--deepseek-text-light);
+}
+
+.deepseek-dark .assistant-message {
+    background-color: #31314F;
+    color: var(--deepseek-text-light);
+}
+
+.deepseek-dark .message-thinking {
+    background-color: #242438;
+    border-left-color: #666;
+    color: #aaa;
+}
+
+/* Коды цветов для индикации агентов */
+.agent-legal-norms {
+    color: #4CAF50; /* Зелёный для правовых норм */
+}
+
+.agent-judicial-practice {
+    color: #2196F3; /* Синий для судебной практики */
+}
+
+.agent-analytics {
+    color: #9C27B0; /* Фиолетовый для аналитики */
+}
+
+.agent-document-prep {
+    color: #FF9800; /* Оранжевый для подготовки документов */
+}
+
+.agent-document-analysis {
+    color: #E91E63; /* Розовый для анализа документов */
+}
+
+/* Индикатор "размышлений" */
+.thinking-indicator {
+    display: flex;
+    align-items: center;
+    margin-top: 8px;
+    color: #888;
+    font-size: 0.9em;
+}
+
+.thinking-dots {
+    display: flex;
+    margin-left: 5px;
+}
+
+.thinking-dot {
+    width: 6px;
+    height: 6px;
+    background-color: #888;
+    border-radius: 50%;
+    margin: 0 2px;
+    animation: thinking 1.4s infinite;
+}
+
+.thinking-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.thinking-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes thinking {
+    0%, 100% { opacity: 0.4; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1); }
+}
+
+/* Стилизация кнопок ввода в стиле DeepSeek */
+.input-container {
+    position: relative;
+    margin-top: 20px;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e0e0e0;
+}
+
+.deepseek-dark .input-container {
+    background-color: #2D2D3E;
+    border-color: #444;
+}
+
+.message-input {
+    width: 100%;
+    min-height: 60px;
+    padding: 12px;
+    border: none;
+    border-radius: 6px;
+    background-color: white;
+    resize: none;
+    font-family: var(--font-family);
+    font-size: 14px;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.deepseek-dark .message-input {
+    background-color: #1E1E2E;
+    color: #e0e0e0;
+}
+
+.input-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.action-button {
+    background: none;
+    border: none;
+    color: #666;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.action-button:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: #333;
+}
+
+.deepseek-dark .action-button {
+    color: #aaa;
+}
+
+.deepseek-dark .action-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #e0e0e0;
+}
+
+.send-button {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 8px 15px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.send-button:hover {
+    background-color: var(--primary-dark);
+}
+
+.deepseek-dark .send-button {
+    background-color: var(--deepseek-primary);
+}
+
+.deepseek-dark .send-button:hover {
+    background-color: #3F43D9;
+}
+
+/* Стили для загруженных файлов */
+.attachment-preview {
+    padding: 8px;
+    margin-bottom: 10px;
+    background-color: #e9f5fe;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.deepseek-dark .attachment-preview {
+    background-color: rgba(33, 150, 243, 0.15);
+}
+
+.attachment-info {
+    display: flex;
+    align-items: center;
+}
+
+.attachment-info i {
+    margin-right: 8px;
+    font-size: 1.2em;
+    color: #2196F3;
+}
+
+.remove-attachment {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.remove-attachment:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+    color: #555;
+}
+
+.deepseek-dark .remove-attachment:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #ddd;
+}
+
+
+-----
+```

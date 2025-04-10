@@ -382,6 +382,123 @@ class WebSearchService:
                 })
         
         return scraped_articles
+    
+    async def search_and_scrape_with_cache(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+        """
+        Комбинированная функция для поиска и скрейпинга с кэшированием и робастной обработкой ошибок
+        """
+        try:
+            # Поиск с помощью DuckDuckGo
+            search_results = await self.search_articles(query, max_results + 3)  # Запрашиваем больше для подстраховки
+            
+            if not search_results:
+                return []
+            
+            # Готовим список для результатов скрейпинга
+            scraped_articles = []
+            search_tasks = []
+            
+            # Создаем задачи для скрейпинга
+            for result in search_results:
+                url = result.get('url')
+                if not url:
+                    continue
+                    
+                # Проверяем кэш
+                cached_content = self.cache.get(url)
+                if cached_content and cached_content.is_successful():
+                    # Используем кэшированный результат
+                    scraped_articles.append({
+                        'title': cached_content.title,
+                        'url': cached_content.url,
+                        'content': cached_content.text,
+                        'metadata': cached_content.metadata,
+                        'from_cache': True
+                    })
+                else:
+                    # Добавляем в список задач для скрейпинга
+                    search_tasks.append(self.scrape_url(url, force_refresh=False))
+            
+            # Запускаем скрейпинг с ограничением числа одновременных задач
+            async with asyncio.Semaphore(self.max_concurrent):
+                scraped_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+            
+            # Обрабатываем результаты скрейпинга
+            for result in scraped_results:
+                # Пропускаем ошибки
+                if isinstance(result, Exception):
+                    continue
+                    
+                if not result or not result.is_successful():
+                    continue
+                    
+                scraped_articles.append({
+                    'title': result.title,
+                    'url': result.url,
+                    'content': result.text,
+                    'metadata': result.metadata,
+                    'from_cache': False
+                })
+                
+                # Ограничиваем число результатов
+                if len(scraped_articles) >= max_results:
+                    break
+            
+            return scraped_articles[:max_results]
+            
+        except Exception as e:
+            logger.error(f"Ошибка при поиске и скрейпинге: {str(e)}")
+            return []
+    
+    async def analyze_web_results(self, query: str, web_results: List[Dict[str, Any]]) -> str:
+        """
+        Анализ результатов поиска в интернете с помощью Qwen
+        """
+        from app.services.ai_service import call_qwen_api
+        
+        system_prompt = """
+        Вы - эксперт по юридическому анализу информации из интернета. Ваша задача - проанализировать 
+        результаты веб-поиска и выделить ключевую информацию, релевантную запросу пользователя.
+        
+        Ваш анализ должен:
+        1. Фокусироваться на правовых аспектах, релевантных для запроса
+        2. Выделять основные факты и мнения
+        3. Учитывать надежность источников
+        4. Структурированно представлять информацию
+        """
+        
+        # Формируем контекст из найденных статей
+        context = "Найденные в интернете источники:\n\n"
+        for i, result in enumerate(web_results, 1):
+            context += f"Источник {i}: {result['title']} ({result['url']})\n"
+            context += f"Содержание: {result['content'][:1000]}...\n\n"
+        
+        prompt = f"""
+        Запрос пользователя: {query}
+        
+        {context}
+        
+        Пожалуйста, проанализируйте эти результаты поиска и предоставьте структурированную информацию, 
+        которая поможет ответить на запрос пользователя.
+        """
+        
+        try:
+            response = await call_qwen_api(
+                prompt=prompt,
+                system_message=system_prompt,
+                max_tokens=2000,
+                temperature=0.4
+            )
+            
+            if response["success"]:
+                return response["text"]
+            else:
+                return "Не удалось проанализировать результаты поиска в интернете."
+        except Exception as e:
+            logger.error(f"Ошибка при анализе веб-результатов: {str(e)}")
+            return f"Ошибка при анализе результатов поиска: {str(e)}"
+
+    
 
 # Создаем синглтон для использования в других частях приложения
 web_search_service = WebSearchService() 

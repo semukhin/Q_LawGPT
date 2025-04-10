@@ -19,73 +19,185 @@ class ChatService:
     Service for managing chat interactions with the LawGPT system
     """
     
-    async def process_message(self, user_id: uuid.UUID, conversation_id: Optional[uuid.UUID], 
-                         message_content: str, db: Session) -> Dict[str, Any]:
+    async def process_message_stream(
+        self, 
+        user_id: uuid.UUID, 
+        conversation_id: uuid.UUID, 
+        message_content: str, 
+        websocket = None
+    ) -> Dict[str, Any]:
         """
-        Process a user message and generate a response using the multi-agent system
+        Обрабатывает сообщение пользователя с потоковой передачей промежуточных результатов
         """
-        # Create or get conversation
-        if not conversation_id:
-            # Create new conversation with title from the first few words of the message
-            title = message_content[:30] + "..." if len(message_content) > 30 else message_content
-            conversation = Conversation(user_id=user_id, title=title)
-            db.add(conversation)
-            db.commit()
-            db.refresh(conversation)
-            conversation_id = conversation.id
-        else:
-            conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
-            if not conversation:
-                return {"error": "Conversation not found"}
+        db = next(get_db())
+        
+        try:
+            # Обновляем timestamp беседы
+            conversation = db.query(Conversation).filter(
+                Conversation.id == conversation_id
+            ).first()
             
-            # Update conversation timestamp
+            if not conversation:
+                if websocket:
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": "Беседа не найдена"
+                    })
+                return {"error": "Беседа не найдена"}
+            
+            # Обновляем метку времени
             conversation.last_message_at = datetime.now()
             db.commit()
-        
-        # Create user message
-        user_message = Message(
-            conversation_id=conversation_id,
-            is_user=True,
-            content=message_content
-        )
-        db.add(user_message)
-        db.commit()
-        db.refresh(user_message)
-        
-        # Create assistant message (initially empty)
-        assistant_message = Message(
-            conversation_id=conversation_id,
-            is_user=False,
-            content=""
-        )
-        db.add(assistant_message)
-        db.commit()
-        db.refresh(assistant_message)
-        
-        # Create coordinator agent log
-        coordinator_log = AgentLog(
-            message_id=assistant_message.id,
-            agent_type="coordinator",
-            processing_status="queued"
-        )
-        db.add(coordinator_log)
-        db.commit()
-        
-        # Start async processing
-        asyncio.create_task(self._process_message_async(
-            user_id, 
-            conversation_id, 
-            message_content, 
-            assistant_message.id, 
-            coordinator_log.id,
-            db
-        ))
-        
-        return {
-            "conversation_id": conversation_id,
-            "message_id": assistant_message.id,
-            "status": "processing"
-        }
+            
+            # Создаем сообщение пользователя
+            user_message = Message(
+                conversation_id=conversation_id,
+                is_user=True,
+                content=message_content
+            )
+            db.add(user_message)
+            db.commit()
+            
+            # Создаем сообщение ассистента (изначально пустое)
+            assistant_message = Message(
+                conversation_id=conversation_id,
+                is_user=False,
+                content=""
+            )
+            db.add(assistant_message)
+            db.commit()
+            
+            # Отправляем подтверждение создания сообщений
+            if websocket:
+                await websocket.send_json({
+                    "type": "message_created",
+                    "user_message_id": str(user_message.id),
+                    "assistant_message_id": str(assistant_message.id)
+                })
+            
+            # Делегируем запрос координатору агентов
+            if websocket:
+                await websocket.send_json({
+                    "type": "thinking", 
+                    "content": "Анализирую запрос..."
+                })
+            
+            # Анализируем запрос, чтобы определить нужных агентов
+            coordinator = coordinator_agent
+            agent_analysis = await coordinator.analyze_query(message_content)
+            
+            if "error" in agent_analysis:
+                error_msg = f"Ошибка анализа запроса: {agent_analysis['error']}"
+                assistant_message.content = error_msg
+                db.commit()
+                
+                if websocket:
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": error_msg
+                    })
+                
+                return {"error": error_msg}
+            
+            # Отправляем информацию о планируемых агентах
+            if websocket:
+                await websocket.send_json({
+                    "type": "thinking",
+                    "content": f"План: {agent_analysis.get('plan', '')}\n" +
+                            f"Агенты: {', '.join(agent_analysis.get('agents', []))}"
+                })
+            
+            # Выполняем запросы к агентам
+            agent_responses = {}
+            for agent_name in agent_analysis.get("agents", []):
+                if websocket:
+                    await websocket.send_json({
+                        "type": "thinking",
+                        "content": f"Запрос к агенту: {agent_name}..."
+                    })
+                
+                # Вызываем соответствующего агента
+                try:
+                    if agent_name == "legal_norms_agent":
+                        response = await legal_norms_agent.process_query(message_content)
+                    elif agent_name == "judicial_practice_agent":
+                        response = await judicial_practice_agent.process_query(message_content)
+                    elif agent_name == "analytics_agent":
+                        response = await analytics_agent.process_query(message_content)
+                    elif agent_name == "document_prep_agent":
+                        response = await document_prep_agent.process_query(message_content)
+                    elif agent_name == "document_analysis_agent":
+                        response = await document_analysis_agent.process_query(message_content)
+                    else:
+                        response = {"error": f"Неизвестный агент: {agent_name}"}
+                    
+                    agent_responses[agent_name] = response
+                    
+                    if websocket:
+                        if "error" in response:
+                            await websocket.send_json({
+                                "type": "thinking",
+                                "content": f"❌ Ошибка агента {agent_name}: {response['error']}"
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "thinking",
+                                "content": f"✅ Агент {agent_name} завершил работу успешно"
+                            })
+                except Exception as e:
+                    error_msg = f"Ошибка при вызове агента {agent_name}: {str(e)}"
+                    agent_responses[agent_name] = {"error": error_msg}
+                    
+                    if websocket:
+                        await websocket.send_json({
+                            "type": "thinking",
+                            "content": f"❌ {error_msg}"
+                        })
+            
+            # Синтезируем финальный ответ
+            if websocket:
+                await websocket.send_json({
+                    "type": "thinking",
+                    "content": "Синтезирую финальный ответ..."
+                })
+            
+            final_response = await coordinator.synthesize_response(
+                message_content, 
+                agent_responses,
+                agent_analysis
+            )
+            
+            # Сохраняем ответ в базу данных
+            assistant_message.content = final_response.get("answer", "Ошибка при формировании ответа")
+            db.commit()
+            
+            # Отправляем финальный ответ
+            if websocket:
+                await websocket.send_json({
+                    "type": "answer",
+                    "content": final_response.get("answer", ""),
+                    "reasoning": final_response.get("reasoning", ""),
+                    "message_id": str(assistant_message.id)
+                })
+            
+            return {
+                "conversation_id": str(conversation_id),
+                "assistant_message_id": str(assistant_message.id),
+                "answer": final_response.get("answer", ""),
+                "reasoning": final_response.get("reasoning", "")
+            }
+        except Exception as e:
+            logger.error(f"Ошибка при обработке сообщения: {str(e)}")
+            
+            if websocket:
+                await websocket.send_json({
+                    "type": "error",
+                    "content": f"Произошла ошибка при обработке запроса: {str(e)}"
+                })
+            
+            return {"error": str(e)}
+        finally:
+            db.close()
     
     async def _process_message_async(self, user_id: uuid.UUID, conversation_id: uuid.UUID, 
                                message_content: str, assistant_message_id: uuid.UUID,

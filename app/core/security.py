@@ -5,7 +5,7 @@ import random
 import string
 from jose import jwt, JWTError
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, WebSocket
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import secrets
@@ -66,3 +66,62 @@ async def get_current_user(
         raise credentials_exception
         
     return user
+
+
+async def get_current_user_ws(websocket: WebSocket) -> User:
+    """
+    Получает текущего пользователя из токена для WebSocket соединения
+    """
+    # Получаем куки из запроса
+    cookies = websocket.cookies
+    
+    # Проверяем наличие токена в куках
+    token = cookies.get("token")
+    
+    # Если токен не найден в куках, пробуем получить из заголовка
+    if not token:
+        headers = websocket.headers
+        authorization = headers.get("authorization")
+        
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization.replace("Bearer ", "")
+    
+    if not token:
+        # Закрываем соединение, если токен не найден
+        await websocket.close(code=1008)  # 1008 - Policy Violation
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Не предоставлен токен доступа"
+        )
+    
+    try:
+        # Проверяем токен
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=1008)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Неверный токен доступа"
+            )
+        
+        # Получаем пользователя из базы данных
+        db = next(get_db())
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                await websocket.close(code=1008)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Пользователь не найден"
+                )
+            
+            return user
+        finally:
+            db.close()
+    except JWTError:
+        await websocket.close(code=1008)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный токен доступа"
+        )
