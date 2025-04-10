@@ -9,6 +9,154 @@ let mediaRecorder = null;
 let isRecording = false;
 let audioChunks = [];
 
+// Вспомогательные функции для WebSocket и голосового ввода
+const ChatUtils = {
+    // Генерация UUID для клиентского ID
+    generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    },
+
+    // Инициализация WebSocket
+    initWebSocket(token, messageHandler) {
+        if (!token) return null;
+        
+        const clientId = this.generateUUID();
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat/${clientId}`;
+        
+        const ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+            console.log("WebSocket соединение установлено");
+            
+            // Отправляем токен для аутентификации
+            ws.send(JSON.stringify({
+                type: "auth",
+                token: token
+            }));
+        };
+        
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log("Получено WebSocket сообщение:", data);
+            
+            // Вызываем обработчик сообщений
+            if (messageHandler) {
+                messageHandler(data);
+            }
+        };
+        
+        ws.onclose = (event) => {
+            if (event.wasClean) {
+                console.log(`WebSocket соединение закрыто корректно, код=${event.code} причина=${event.reason}`);
+            } else {
+                console.log('WebSocket соединение прервано');
+            }
+        };
+        
+        ws.onerror = (error) => {
+            console.error(`WebSocket ошибка: ${error.message}`);
+        };
+        
+        return ws;
+    },
+    
+    // Запись голоса
+    async startVoiceRecording(callbacks) {
+        if (isRecording) return;
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            
+            mediaRecorder.ondataavailable = (event) => {
+                audioChunks.push(event.data);
+            };
+            
+            mediaRecorder.onstop = async () => {
+                isRecording = false;
+                
+                if (callbacks && callbacks.onStopRecording) {
+                    callbacks.onStopRecording();
+                }
+                
+                // Создаем аудио-блоб
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                
+                if (callbacks && callbacks.onProcessAudio) {
+                    await callbacks.onProcessAudio(audioBlob);
+                }
+            };
+            
+            mediaRecorder.start();
+            isRecording = true;
+            
+            if (callbacks && callbacks.onStartRecording) {
+                callbacks.onStartRecording();
+            }
+            
+        } catch (err) {
+            console.error("Ошибка при доступе к микрофону:", err);
+            if (callbacks && callbacks.onError) {
+                callbacks.onError(err);
+            }
+        }
+    },
+    
+    stopVoiceRecording() {
+        if (mediaRecorder && isRecording) {
+            mediaRecorder.stop();
+        }
+    },
+    
+    // Отправка аудио для транскрибации
+    async sendAudioForTranscription(audioBlob, token) {
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'recording.wav');
+        
+        try {
+            const response = await fetch('/api/voice/transcribe', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ошибка! статус: ${response.status}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error("Ошибка при отправке аудио:", error);
+            throw error;
+        }
+    },
+    
+    // Форматирование времени
+    formatTime(timestamp) {
+        if (!timestamp) return '';
+        
+        const date = new Date(timestamp);
+        
+        // Форматируем дату (DD.MM.YYYY)
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const year = date.getFullYear();
+        
+        // Форматируем время (HH:MM)
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        
+        return `${day}.${month}.${year} ${hours}:${minutes}`;
+    }
+};
+
 // Инициализация Vue-приложения
 const app = Vue.createApp({
     data() {
@@ -16,6 +164,22 @@ const app = Vue.createApp({
             // Состояние аутентификации
             isAuthenticated: false,
             userEmail: '',
+            authError: '',
+            isAuthLoading: false,
+            
+            // Формы аутентификации
+            loginEmail: '',
+            loginPassword: '',
+            registerEmail: '',
+            registerFirstName: '',
+            registerLastName: '',
+            registerPassword: '',
+            registerPasswordConfirm: '',
+            forgotEmail: '',
+            resetCode: '',
+            newPassword: '',
+            showResetCodeInput: false,
+            authTab: 'login',
             
             // Состояние ввода
             newMessage: '',
@@ -68,6 +232,7 @@ const app = Vue.createApp({
         // Аутентификация
         async login() {
             try {
+                this.isAuthLoading = true;
                 const formData = new FormData();
                 formData.append('username', this.loginEmail);
                 formData.append('password', this.loginPassword);
@@ -113,6 +278,102 @@ const app = Vue.createApp({
             if (chatWebSocket) {
                 chatWebSocket.close();
                 chatWebSocket = null;
+            }
+        },
+        
+        async register() {
+            if (this.registerPassword !== this.registerPasswordConfirm) {
+                this.authError = 'Пароли не совпадают';
+                return;
+            }
+            
+            try {
+                this.isAuthLoading = true;
+                const formData = new FormData();
+                formData.append('email', this.registerEmail);
+                formData.append('first_name', this.registerFirstName);
+                formData.append('last_name', this.registerLastName);
+                formData.append('password', this.registerPassword);
+                
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    this.isAuthLoading = false;
+                    this.authTab = 'login';
+                    this.showNotification('Регистрация успешна! Проверьте вашу почту для подтверждения.', 'success');
+                } else {
+                    this.authError = data.detail || 'Ошибка регистрации';
+                    this.isAuthLoading = false;
+                }
+            } catch (error) {
+                console.error('Ошибка регистрации:', error);
+                this.authError = 'Ошибка соединения с сервером';
+                this.isAuthLoading = false;
+            }
+        },
+        
+        async requestPasswordReset() {
+            try {
+                this.isAuthLoading = true;
+                const response = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: this.forgotEmail })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    this.showNotification('Код восстановления отправлен на вашу почту', 'success');
+                    this.showResetCodeInput = true;
+                    this.isAuthLoading = false;
+                } else {
+                    this.authError = data.detail || 'Ошибка запроса восстановления пароля';
+                    this.isAuthLoading = false;
+                }
+            } catch (error) {
+                console.error('Ошибка запроса восстановления пароля:', error);
+                this.authError = 'Ошибка соединения с сервером';
+                this.isAuthLoading = false;
+            }
+        },
+        
+        async resetPassword() {
+            try {
+                this.isAuthLoading = true;
+                const response = await fetch('/api/auth/reset-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: this.forgotEmail,
+                        code: this.resetCode,
+                        new_password: this.newPassword
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    this.showNotification('Пароль успешно изменен', 'success');
+                    this.authTab = 'login';
+                    this.isAuthLoading = false;
+                } else {
+                    this.authError = data.detail || 'Ошибка сброса пароля';
+                    this.isAuthLoading = false;
+                }
+            } catch (error) {
+                console.error('Ошибка сброса пароля:', error);
+                this.authError = 'Ошибка соединения с сервером';
+                this.isAuthLoading = false;
             }
         },
         
@@ -319,72 +580,72 @@ const app = Vue.createApp({
             const token = localStorage.getItem('token');
             if (!token) return;
             
-            const clientId = this.generateUUID();
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat/${clientId}`;
+            // Используем функцию из ChatUtils для инициализации WebSocket
+            chatWebSocket = ChatUtils.initWebSocket(token, (data) => {
+                this.handleWebSocketMessage(data);
+            });
             
-            chatWebSocket = new WebSocket(wsUrl);
-            
-            chatWebSocket.onopen = () => {
-                console.log("WebSocket соединение установлено");
-                
-                // Отправляем токен для аутентификации
-                chatWebSocket.send(JSON.stringify({
-                    type: "auth",
-                    token: token
-                }));
-            };
-            
-            chatWebSocket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                console.log("Получено WebSocket сообщение:", data);
-                
-                switch(data.type) {
-                    case "thinking":
-                        // Обновляем "размышления" последнего сообщения ассистента
-                        this.updateLastAssistantThinking(data.content);
-                        break;
-                        
-                    case "answer":
-                        // Устанавливаем финальный ответ ассистента
-                        this.updateLastAssistantMessage(data.content, data.reasoning);
-                        this.isAssistantTyping = false;
-                        break;
-                        
-                    case "message_created":
-                        // Запоминаем ID сообщений
-                        currentUserMessageId = data.user_message_id;
-                        currentAssistantMessageId = data.assistant_message_id;
-                        break;
-                        
-                    case "error":
-                        // Показываем ошибку
-                        this.showNotification(data.content, 'error');
-                        this.isAssistantTyping = false;
-                        break;
-                }
-                
-                // Прокручиваем до последнего сообщения
-                this.$nextTick(() => {
-                    if (this.$refs.messagesContainer) {
-                        this.$refs.messagesContainer.scrollTop = this.$refs.messagesContainer.scrollHeight;
+            // Установка обработчика закрытия соединения
+            if (chatWebSocket) {
+                chatWebSocket.onclose = (event) => {
+                    if (event.wasClean) {
+                        console.log(`WebSocket соединение закрыто корректно, код=${event.code} причина=${event.reason}`);
+                    } else {
+                        console.log('WebSocket соединение прервано');
+                        // Пробуем переподключиться через 5 секунд
+                        setTimeout(() => this.initWebSocket(), 5000);
                     }
-                });
-            };
+                };
+            }
+        },
+        
+        handleWebSocketMessage(data) {
+            switch(data.type) {
+                case "thinking":
+                    // Обновляем "размышления" последнего сообщения ассистента
+                    this.updateLastAssistantThinking(data.content);
+                    break;
+                    
+                case "answer":
+                    // Устанавливаем финальный ответ ассистента
+                    this.updateLastAssistantMessage(data.content, data.reasoning);
+                    this.isAssistantTyping = false;
+                    break;
+                    
+                case "message_created":
+                    // Запоминаем ID сообщений
+                    currentUserMessageId = data.user_message_id;
+                    currentAssistantMessageId = data.assistant_message_id;
+                    break;
+                    
+                case "error":
+                    // Показываем ошибку
+                    this.showNotification(data.content, 'error');
+                    this.isAssistantTyping = false;
+                    break;
+                    
+                case "conversation_update":
+                    // Обновляем ID текущей беседы
+                    currentConversationId = data.conversation_id;
+                    break;
+                    
+                case "assistant_message":
+                    // Обрабатываем статус сообщения ассистента
+                    console.log("Сообщение ассистента:", data);
+                    break;
+                    
+                case "assistant_message_completed":
+                    // Обрабатываем завершение ответа ассистента
+                    this.isAssistantTyping = false;
+                    break;
+            }
             
-            chatWebSocket.onclose = (event) => {
-                if (event.wasClean) {
-                    console.log(`WebSocket соединение закрыто корректно, код=${event.code} причина=${event.reason}`);
-                } else {
-                    console.log('WebSocket соединение прервано');
-                    // Пробуем переподключиться через 5 секунд
-                    setTimeout(() => this.initWebSocket(), 5000);
+            // Прокручиваем до последнего сообщения
+            this.$nextTick(() => {
+                if (this.$refs.messagesContainer) {
+                    this.$refs.messagesContainer.scrollTop = this.$refs.messagesContainer.scrollHeight;
                 }
-            };
-            
-            chatWebSocket.onerror = (error) => {
-                console.error(`WebSocket ошибка: ${error.message}`);
-            };
+            });
         },
         
         updateLastAssistantThinking(content) {
@@ -412,41 +673,26 @@ const app = Vue.createApp({
         
         // Голосовой ввод
         async startVoiceRecording() {
-            if (this.isRecording) return;
-            
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
-                
-                mediaRecorder.ondataavailable = (event) => {
-                    audioChunks.push(event.data);
-                };
-                
-                mediaRecorder.onstop = async () => {
+            // Используем функцию из ChatUtils для записи голоса
+            await ChatUtils.startVoiceRecording({
+                onStartRecording: () => {
+                    this.isRecording = true;
+                },
+                onStopRecording: () => {
                     this.isRecording = false;
-                    
-                    // Создаем аудио-блоб
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                    
+                },
+                onProcessAudio: async (audioBlob) => {
                     // Показываем индикатор загрузки
                     this.showNotification('Обработка голосового ввода...', 'info');
                     
-                    // Отправляем аудио для транскрибации
-                    const formData = new FormData();
-                    formData.append('file', audioBlob, 'recording.wav');
-                    
                     try {
-                        const response = await fetch('/api/voice/transcribe', {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${localStorage.getItem('token')}`
-                            },
-                            body: formData
-                        });
+                        // Отправляем аудио для транскрибации
+                        const data = await ChatUtils.sendAudioForTranscription(
+                            audioBlob, 
+                            localStorage.getItem('token')
+                        );
                         
-                        if (response.ok) {
-                            const data = await response.json();
+                        if (data.text) {
                             this.newMessage = data.text;
                             this.showNotification('Голосовой ввод распознан', 'success');
                         } else {
@@ -456,29 +702,87 @@ const app = Vue.createApp({
                         console.error('Ошибка при отправке аудио:', error);
                         this.showNotification('Ошибка при отправке аудио', 'error');
                     }
-                };
-                
-                mediaRecorder.start();
-                this.isRecording = true;
-                
-            } catch (err) {
-                console.error("Ошибка при доступе к микрофону:", err);
-                this.showNotification('Не удалось получить доступ к микрофону', 'error');
-            }
+                },
+                onError: (error) => {
+                    this.showNotification('Не удалось получить доступ к микрофону', 'error');
+                }
+            });
         },
         
         stopVoiceRecording() {
-            if (mediaRecorder && this.isRecording) {
-                mediaRecorder.stop();
+            ChatUtils.stopVoiceRecording();
+        },
+        
+        // Работа с документами
+        async shareConversation() {
+            if (!currentConversationId) return;
+            
+            try {
+                const response = await fetch(`/api/v1/conversations/${currentConversationId}/share`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    this.shareLink = `${window.location.origin}${data.share_url}`;
+                    this.shareModalVisible = true;
+                } else {
+                    this.showNotification('Ошибка при создании ссылки', 'error');
+                }
+            } catch (error) {
+                console.error('Ошибка при создании ссылки:', error);
+                this.showNotification('Ошибка соединения с сервером', 'error');
             }
+        },
+        
+        copyShareLink() {
+            this.$refs.shareLinkInput.select();
+            document.execCommand('copy');
+            this.showNotification('Ссылка скопирована в буфер обмена', 'success');
+        },
+        
+        async showDocument(documentId) {
+            try {
+                const response = await fetch(`/api/v1/documents/${documentId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    this.documentTitle = data.title;
+                    this.documentContent = data.content;
+                    this.documentModalVisible = true;
+                } else {
+                    this.showNotification('Ошибка при загрузке документа', 'error');
+                }
+            } catch (error) {
+                console.error('Ошибка при загрузке документа:', error);
+                this.showNotification('Ошибка соединения с сервером', 'error');
+            }
+        },
+        
+        async downloadDocument() {
+            // Логика загрузки документа
+        },
+        
+        copyDocument() {
+            navigator.clipboard.writeText(this.documentContent);
+            this.showNotification('Документ скопирован в буфер обмена', 'success');
+        },
+        
+        shareDocument() {
+            // Логика для шаринга документа
         },
         
         // Вспомогательные функции
         generateUUID() {
-            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-                return v.toString(16);
-            });
+            return ChatUtils.generateUUID();
         },
         
         formatMessage(content) {
@@ -495,20 +799,7 @@ const app = Vue.createApp({
         },
         
         formatTime(timestamp) {
-            if (!timestamp) return '';
-            
-            const date = new Date(timestamp);
-            
-            // Форматируем дату (DD.MM.YYYY)
-            const day = date.getDate().toString().padStart(2, '0');
-            const month = (date.getMonth() + 1).toString().padStart(2, '0');
-            const year = date.getFullYear();
-            
-            // Форматируем время (HH:MM)
-            const hours = date.getHours().toString().padStart(2, '0');
-            const minutes = date.getMinutes().toString().padStart(2, '0');
-            
-            return `${day}.${month}.${year} ${hours}:${minutes}`;
+            return ChatUtils.formatTime(timestamp);
         },
         
         showNotification(message, type = 'info') {
@@ -551,6 +842,11 @@ const app = Vue.createApp({
         removeAttachment() {
             this.attachmentFile = null;
             this.$refs.fileInput.value = '';
+        },
+        
+        // Дополнительные функции для интерфейса
+        showForgotPasswordForm() {
+            this.authTab = 'forgot-password';
         }
     }
 });

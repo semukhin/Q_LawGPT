@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, File, Form, UploadFile
-from sqlalchemy.orm import Session
+import os
+from fastapi import APIRouter, Depends, HTTPException, Request
+from requests import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
-import logging
 import uuid
 from datetime import datetime
-import os
+import logging
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -18,88 +20,64 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Определите схему для сообщения
+class ChatMessage(BaseModel):
+    message: str
+    conversation_id: Optional[uuid.UUID] = None
+
 @router.post("/send")
 async def send_message(
-    message: str = Form(default=""),
-    file: Optional[UploadFile] = File(None),
-    conversation_id: Optional[str] = Form(None),
+    message: ChatMessage,
+    request: Request,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Отправляет сообщение в чат и получает ответ от ассистента.
-    """
     try:
-        # Обработка загруженного файла
-        file_content = ""
-        if file:
-            # Проверяем расширение файла
-            if not file.filename.lower().endswith('.docx'):
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Неподдерживаемый тип файла. В данный момент поддерживаются только файлы DOCX."
-                )
-            
-            file_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{file.filename}")
-            try:
-                # Сохраняем файл
-                with open(file_path, "wb") as buffer:
-                    content = await file.read()
-                    buffer.write(content)
-                
-                # Извлекаем текст из файла
-                file_content = extract_text_from_any_document(file_path)
-                
-                # Удаляем временный файл
-                os.remove(file_path)
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Ошибка обработки файла: {str(e)}")
-
-        # Получаем или создаем беседу
-        conversation = None
-        if conversation_id:
-            conversation = db.query(Conversation).filter_by(id=conversation_id, user_id=current_user.id).first()
-            if not conversation:
-                raise HTTPException(status_code=404, detail="Беседа не найдена")
-        else:
-            conversation = Conversation(user_id=current_user.id)
+        # Создаем новую беседу, если conversation_id не указан
+        conversation_id = message.conversation_id
+        if not conversation_id:
+            conversation = Conversation(
+                user_id=current_user.id,
+                title=f"Чат от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            )
             db.add(conversation)
-            db.commit()
+            await db.commit()
+            await db.refresh(conversation)
+            conversation_id = conversation.id
+        else:
+            # Проверяем, принадлежит ли беседа пользователю
+            conversation = await db.execute(
+                f"SELECT * FROM conversations WHERE id = '{conversation_id}' AND user_id = '{current_user.id}'"
+            )
+            if not conversation.first():
+                raise HTTPException(status_code=403, detail="Нет доступа к этой беседе")
 
-        # Формируем полное сообщение
-        full_message = message
-        if file_content:
-            full_message = f"{message}\n\nСодержимое документа:\n{file_content}"
-
-        # Сохраняем сообщение пользователя
+        # Создаем сообщение пользователя
         user_message = Message(
-            conversation_id=conversation.id,
-            content=full_message,
+            conversation_id=conversation_id,
+            content=message.message,
             is_user=True
         )
         db.add(user_message)
-        
-        # Здесь должна быть логика обработки сообщения и получения ответа от LLM
-        # Пока просто возвращаем эхо
-        response_content = f"Получено сообщение: {full_message}"
-        
-        # Сохраняем ответ системы
-        assistant_message = Message(
-            conversation_id=conversation.id,
-            content=response_content,
-            is_user=False
+        await db.commit()
+
+        # Обрабатываем сообщение через сервис чата
+        response = await chat_service.process_message(
+            current_user.id,
+            conversation_id,
+            message.message,
+            db
         )
-        db.add(assistant_message)
-        db.commit()
 
         return {
-            "conversation_id": conversation.id,
-            "response": response_content
+            "conversation_id": str(conversation_id),
+            "response": response
         }
 
     except Exception as e:
-        logger.error(f"Ошибка при обработке сообщения: {str(e)}")
+        logger.error(f"Error processing message: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    
 
 @router.get("/conversations")
 async def get_conversations(

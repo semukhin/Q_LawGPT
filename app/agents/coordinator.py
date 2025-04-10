@@ -6,6 +6,11 @@ from app.core.config import settings
 from app.services.web_search import web_search_service
 from app.services.ai_service import call_qwen_api
 from app.services.elasticsearch_service import elasticsearch_service
+from app.agents.legal_norms import legal_norms_agent
+from app.agents.judicial import judicial_practice_agent
+from app.agents.analytics import analytics_agent
+from app.agents.document_prep import document_prep_agent
+from app.agents.document_analysis import document_analysis_agent
 
 logger = logging.getLogger(__name__)
 

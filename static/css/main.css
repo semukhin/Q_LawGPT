@@ -1,4 +1,3 @@
-```css
 /* Global Styles */
 :root {
     --primary-color: #1e3a8a;
@@ -214,8 +213,8 @@ button:disabled {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px
-
+    padding: 16px;
+}
 
 /* app/static/css/main.css - дополнение к имеющимся стилям */
 
@@ -547,6 +546,4 @@ button:disabled {
     color: #ddd;
 }
 
-
------
-```
+/* Конец файла */

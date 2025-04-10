@@ -1,3 +1,31 @@
+from typing import Dict, Any, Optional, List, Union
+import os
+import base64
+import re
+import logging
+from app.services.ai_service import call_qwen_api
+from app.services.elasticsearch_service import elasticsearch_service
+
+# Инициализация логгера
+logger = logging.getLogger(__name__)
+
+class DocumentAnalysisAgent:
+    def __init__(self):
+        # Словарь с ключевыми словами для определения типа документа
+        self.document_types = {
+            "contract": ["договор", "контракт", "соглашение", "стороны", "обязуются"],
+            "lawsuit": ["исковое", "истец", "ответчик", "требование", "иск"],
+            "court_decision": ["суд", "постановил", "решение", "приговор", "дело"],
+            "appeal": ["апелляция", "жалоба", "обжалование"],
+            "power_of_attorney": ["доверенность", "доверяю", "уполномочиваю"],
+            "statute": ["устав", "положение", "регламент"],
+            "legal_statement": ["заявление", "ходатайство", "прошу"],
+            "notary_document": ["нотариус", "удостоверено", "засвидетельствовано"],
+            "official_letter": ["письмо", "запрос", "уведомление", "обращение"]
+        }
+        # Здесь можно добавить ссылку на ElasticsearchService, если нужно
+        self.es_service = elasticsearch_service
+
     async def analyze_document_image(self, image_url: str) -> Dict[str, Any]:
         """
         Анализирует изображение юридического документа и потоково возвращает результаты
@@ -80,7 +108,6 @@
                 "error": f"Не удалось проанализировать документ: {error_msg}",
                 "success": False
             }
-    
 
     def _extract_structured_data(self, analysis_text: str, document_type: str) -> Optional[Dict[str, Any]]:
         """
@@ -170,7 +197,6 @@
         
         return False
 
-
     async def _save_analysis_to_elasticsearch(self, analysis_result: Dict[str, Any]) -> None:
         """
         Сохраняет результат анализа документа в Elasticsearch
@@ -200,7 +226,7 @@
         except Exception as e:
             logger.error(f"Ошибка при сохранении в Elasticsearch: {str(e)}")
             raise
-    
+
     def _determine_document_type(self, text: str) -> str:
         """
         Определяет тип документа на основе анализа содержания
@@ -239,7 +265,7 @@
                 return doc_type
         
         return "other_legal_document"
-    
+
     def _get_readable_document_type(self, doc_type: str) -> str:
         """
         Возвращает читаемое название типа документа на русском
@@ -258,7 +284,7 @@
             "unknown": "Неопределенный тип документа"
         }
         return readable_types.get(doc_type, "Неопределенный тип документа")
-    
+
     def _generate_follow_up_tips(self, doc_type: str) -> List[str]:
         """
         Генерирует подсказки для дальнейших действий в зависимости от типа документа
@@ -297,7 +323,7 @@
             "Обратите внимание на сроки и даты в документе",
             "Изучите права и обязанности сторон"
         ])
-    
+
     async def advanced_document_analysis(self, image_url: str, specific_question: str = None) -> Dict[str, Any]:
         """
         Проводит углубленный анализ документа с возможностью задать конкретный вопрос
@@ -341,7 +367,7 @@
                 base_analysis["specific_analysis_error"] = specific_result.get("error", "Не удалось выполнить анализ по конкретному вопросу")
         
         return base_analysis
-    
+
     async def process_query(self, query_data: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
         """
         Обрабатывает запрос с изображением и опционально текстом

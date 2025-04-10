@@ -28,11 +28,11 @@ from app.db.models import User, Conversation, Message, AgentLog, Document, Feedb
 from app.services.chat import chat_service
 from app.services.document import document_service
 from app.services.voice import voice_service
-from app.api.endpoints import voice
 from app.schemas.user import UserCreate, UserLogin, VerifyRequest, PasswordResetRequest, PasswordResetConfirm
 from app.utils.mail import send_verification_email, send_recovery_email
 from app.api import chat, auth
 from app.api.auth import get_current_user
+from app.api import voice  # Импортируем модуль с роутером
 
 # Constants
 ALGORITHM = "HS256"
@@ -105,7 +105,7 @@ async def startup_event():
         raise
 
 # Mount static files
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Templates
 templates = Jinja2Templates(directory="app/templates")
