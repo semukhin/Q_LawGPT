@@ -131,3 +131,57 @@ async def get_messages(
             } for msg in messages
         ]
     }
+
+# Эндпоинт для отправки сообщения
+@router.post("/api/chat/send")
+async def send_message(
+    message: ChatMessage,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        # Создаем новую беседу, если conversation_id не указан
+        conversation_id = message.conversation_id
+        if not conversation_id:
+            conversation = Conversation(
+                user_id=current_user.id,
+                title=f"Чат от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            )
+            db.add(conversation)
+            await db.commit()
+            await db.refresh(conversation)
+            conversation_id = conversation.id
+        else:
+            # Проверяем, принадлежит ли беседа пользователю
+            conversation = await db.execute(
+                f"SELECT * FROM conversations WHERE id = '{conversation_id}' AND user_id = '{current_user.id}'"
+            )
+            if not conversation.first():
+                raise HTTPException(status_code=403, detail="Нет доступа к этой беседе")
+
+        # Создаем сообщение пользователя
+        user_message = Message(
+            conversation_id=conversation_id,
+            content=message.message,
+            is_user=True
+        )
+        db.add(user_message)
+        await db.commit()
+
+        # Обрабатываем сообщение через сервис чата
+        response = await chat_service.process_message(
+            current_user.id,
+            conversation_id,
+            message.message,
+            db
+        )
+
+        return {
+            "conversation_id": str(conversation_id),
+            "response": response
+        }
+
+    except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
