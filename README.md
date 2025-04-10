@@ -81,55 +81,63 @@ docker-compose up -d
 
 ## Структура проекта
 
+```
 Q_LawGPT/
-├── alembic/ # Миграции базы данных
-│ ├── versions/ # Версии миграций
-│ ├── env.py # Окружение для миграций
-│ └── script.py.mako # Шаблон для миграций
-├── app/ # Основной код приложения
-│ ├── agents/ # Агенты для различных юридических задач
-│ │ ├── analytics.py # Аналитический агент
-│ │ ├── coordinator.py # Координатор агентов
-│ │ ├── document_analysis.py # Анализ документов
-│ │ ├── document_prep.py # Подготовка документов
-│ │ ├── judicial.py # Судебный агент
-│ │ └── legal_norms.py # Агент по правовым нормам
-│ ├── api/ # API эндпоинты
-│ │ ├── auth.py # Аутентификация
-│ │ ├── chat.py # Чат API
-│ │ ├── documents.py # API для работы с документами
-│ │ ├── websockets.py # WebSockets API
-│ │ └── whisper_api.py # API для Whisper
-│ ├── core/ # Ядро приложения
-│ │ ├── config.py # Конфигурация
-│ │ ├── database.py # Настройки базы данных
-│ │ └── security.py # Безопасность и аутентификация
-│ ├── db/ # Модели базы данных
-│ ├── rag/ # Retrieval-Augmented Generation модули
-│ │ ├── elastic.py # Интеграция с Elasticsearch
-│ │ ├── retrieval.py # Поиск и извлечение данных
-│ │ └── indexing.py # Индексирование данных
-│ ├── schemas/ # Pydantic схемы
-│ ├── scripts/ # Вспомогательные скрипты
-│ │ └── index_rag_data.py # Индексирование данных для RAG
-│ ├── services/ # Сервисы
-│ │ ├── ai_service.py # Сервис AI
-│ │ ├── chat.py # Сервис чата
-│ │ ├── document.py # Сервис для работы с документами
-│ │ ├── elasticsearch_service.py # Сервис для ElasticSearch
-│ │ ├── image_analysis.py # Анализ изображений
-│ │ ├── voice.py # Сервис для голосового ввода
-│ │ └── web_search.py # Сервис для поиска в интернете
-│ ├── utils/ # Утилиты
-│ ├── init.py # Инициализация пакета
-│ └── main.py # Точка входа FastAPI приложения
-├── static/ # Статические файлы
-├── .gitignore # Список исключений для git
-├── alembic.ini # Конфигурация Alembic
-├── docker-compose.yml # Конфигурация Docker Compose
-├── Dockerfile.whisper # Dockerfile для Whisper API сервиса
-└── requirements.txt # Зависимости Python
-
+├── alembic/                # Миграции базы данных
+│   ├── versions/           # Версии миграций
+│   ├── env.py              # Окружение для миграций
+│   └── script.py.mako      # Шаблон для миграций
+├── app/                    # Основной код приложения
+│   ├── agents/             # Агенты для различных юридических задач
+│   │   ├── analytics.py    # Аналитический агент
+│   │   ├── coordinator.py  # Координатор агентов
+│   │   ├── document_analysis.py # Анализ документов
+│   │   ├── document_prep.py # Подготовка документов
+│   │   ├── judicial.py     # Судебный агент
+│   │   └── legal_norms.py  # Агент по правовым нормам
+│   ├── api/                # API эндпоинты
+│   │   ├── auth.py         # Аутентификация
+│   │   ├── chat.py         # Чат API
+│   │   ├── documents.py    # API для работы с документами
+│   │   ├── voice.py        # API для голосового интерфейса
+│   │   ├── websockets.py   # WebSockets API
+│   │   └── whisper_api.py  # API для Whisper
+│   ├── core/               # Ядро приложения
+│   │   ├── config.py       # Конфигурация
+│   │   ├── database.py     # Настройки базы данных
+│   │   └── security.py     # Безопасность и аутентификация
+│   ├── db/                 # Модели базы данных
+│   ├── rag/                # Retrieval-Augmented Generation модули
+│   │   ├── elastic.py      # Интеграция с Elasticsearch
+│   │   ├── retrieval.py    # Поиск и извлечение данных
+│   │   └── indexing.py     # Индексирование данных
+│   ├── schemas/            # Pydantic схемы
+│   ├── scripts/            # Вспомогательные скрипты
+│   │   └── index_rag_data.py # Индексирование данных для RAG
+│   ├── services/           # Сервисы
+│   │   ├── ai_service.py   # Сервис AI
+│   │   ├── chat.py         # Сервис чата
+│   │   ├── document.py     # Сервис для работы с документами
+│   │   ├── elasticsearch_service.py # Сервис для ElasticSearch
+│   │   ├── image_analysis.py # Анализ изображений
+│   │   ├── voice.py        # Сервис для голосового ввода
+│   │   └── web_search.py   # Сервис для поиска в интернете
+│   ├── templates/          # Шаблоны для рендеринга HTML
+│   │   └── index.html      # Основной шаблон приложения
+│   ├── utils/              # Утилиты
+│   ├── __init__.py         # Инициализация пакета
+│   └── main.py             # Точка входа FastAPI приложения
+├── static/                 # Статические файлы
+│   ├── css/                # Стили CSS
+│   ├── js/                 # JavaScript файлы
+│   └── voice.html          # HTML для голосового интерфейса
+├── venv/                   # Виртуальное окружение Python
+├── .gitignore              # Список исключений для git
+├── alembic.ini             # Конфигурация Alembic
+├── docker-compose.yml      # Конфигурация Docker Compose
+├── Dockerfile.whisper      # Dockerfile для Whisper API сервиса
+└── requirements.txt        # Зависимости Python
+```
 
 ## Разработка
 
